@@ -235,55 +235,49 @@ def main():
     st.markdown("---")
 
     # ==================== 数据加载 | Data Loading ====================
-    # 优先从项目根目录读取，其次使用原始路径
-    csv_path_local = os.path.join(os.path.dirname(__file__), 'trade_list_top10.csv')
-    base_path = r"C:\Users\Administrator\A_share_index\daily_signals"
+    # 简化路径：只从项目根目录读取 trade_list_top10.csv
+    csv_path = os.path.join(os.path.dirname(__file__), 'trade_list_top10.csv')
     
-    use_local = False
+    if not os.path.exists(csv_path):
+        st.error("❌ 数据文件不存在 | Data file not found")
+        st.info("请上传 trade_list_top10.csv 到项目目录")
+        st.code(csv_path)
+        return
     
-    if os.path.exists(csv_path_local):
-        st.caption("📁 使用本地数据 | Using local data")
-        try:
-            df = pd.read_csv(csv_path_local)
-            latest_folder = "本地数据 | Local Data"
-            signal_type = "unknown"
-            signal_date = datetime.now()
-            date_display = latest_folder
-            use_local = True
-            
-            # 判断风险类型
-            if 'risk_on' in csv_path_local.lower():
-                signal_type = 'risk_on'
-            elif 'risk_off' in csv_path_local.lower():
-                signal_type = 'risk_off'
-        except Exception as e:
-            st.error(f"❌ 读取本地数据失败 | Local data read failed: {e}")
-            return
-    elif os.path.exists(base_path):
-        # 使用原始路径逻辑
-        latest_folder, signal_type, signal_date = get_latest_signal_folder(base_path)
+    try:
+        df = pd.read_csv(csv_path)
         
-        if latest_folder is None:
-            st.error("❌ 数据路径不存在 | Data path not found")
-            return
+        # ==================== 自动判断交易日 | Auto Detect Trading Date ====================
+        now = datetime.now()
+        current_time = now.time()
+        cutoff_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
         
-        csv_path = os.path.join(base_path, latest_folder, 'trade_list_top10.csv')
+        if current_time >= cutoff_time:
+            # 16:00 之后，显示下一个交易日
+            display_date = now + timedelta(days=1)
+            date_label = "下一个交易日"
+        else:
+            # 16:00 之前，显示今天
+            display_date = now
+            date_label = "今日"
         
-        if not os.path.exists(csv_path):
-            st.error("❌ 数据文件不存在 | Data file not found")
-            return
+        # 尝试从文件名或内容获取实际日期
+        # 默认使用当前判断的日期
+        signal_date = display_date
+        latest_folder = f"{display_date.strftime('%Y-%m-%d')} (自动判断)"
+        date_display = display_date.strftime('%Y-%m-%d')
         
-        try:
-            df = pd.read_csv(csv_path)
-            date_display = signal_date.strftime('%Y-%m-%d') if signal_date else latest_folder
-        except Exception as e:
-            st.error(f"❌ 读取数据失败 | Data read failed: {e}")
-            return
-    else:
-        st.error("❌ 数据路径不存在 | Data path not found")
-        st.write("请确保以下任一路径存在 | Ensure one of these paths exists:")
-        st.code(csv_path_local)
-        st.code(base_path)
+        # 判断风险类型（如果有 risk_on/risk_off 标记）
+        signal_type = "unknown"
+        if 'risk_on' in csv_path.lower():
+            signal_type = 'risk_on'
+        elif 'risk_off' in csv_path.lower():
+            signal_type = 'risk_off'
+        
+        st.caption(f"📅 {date_label} | Trading Day: {date_display}")
+        
+    except Exception as e:
+        st.error(f"❌ 读取数据失败 | Data read failed: {e}")
         return
 
     # 验证数据格式 | Validate data format
