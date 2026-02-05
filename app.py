@@ -89,25 +89,25 @@ st.markdown("""
 <style>
 /* 限制宽度 | Limit Width */
 .block-container {
-    max-width: 850px !important;
-    padding-top: 1.5rem !important;
+    max-width: 700px !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 3rem !important;
 }
 
 /* 标题 | Title */
 .main-title {
-    font-size: 1.8em;
+    font-size: 1.2em;
     font-weight: 600;
     text-align: center;
-    background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    margin-bottom: 5px;
+    color: #2c3e50;
 }
 
 .subtitle {
     text-align: center;
     color: #7f8c8d;
-    font-size: 0.9em;
-    margin-bottom: 20px;
+    font-size: 0.75em;
+    margin-bottom: 10px;
 }
 
 /* 信号卡片 | Signal Card */
@@ -249,10 +249,9 @@ def main():
         
         # ==================== 自动判断交易日 | Auto Detect Trading Date ====================
         now = datetime.now()
-        current_time = now.time()
-        cutoff_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        current_hour = now.hour
         
-        if current_time >= cutoff_time:
+        if current_hour >= 16:
             # 16:00 之后，显示下一个交易日
             display_date = now + timedelta(days=1)
             date_label = "下一个交易日"
@@ -261,8 +260,6 @@ def main():
             display_date = now
             date_label = "今日"
         
-        # 尝试从文件名或内容获取实际日期
-        # 默认使用当前判断的日期
         signal_date = display_date
         latest_folder = f"{display_date.strftime('%Y-%m-%d')} (自动判断)"
         date_display = display_date.strftime('%Y-%m-%d')
