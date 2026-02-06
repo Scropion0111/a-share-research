@@ -927,12 +927,58 @@ def page_chart(key_verified: bool = False):
     """, unsafe_allow_html=True)
     
     if not key_verified:
+        # ==================== 黄色授权码威慑 ====================
         st.markdown("""
-        <div class="locked-prompt">
-            <div class="locked-prompt-icon">🔒</div>
-            <div class="locked-prompt-title">行情视图需订阅后解锁</div>
-            <div class="locked-prompt-text">
-                请输入 Access Key 验证身份
+        <style>
+        .auth-warning {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fbbf24 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 16px;
+            padding: 28px 24px;
+            margin: 20px 0 28px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(245, 158, 11, 0.25);
+        }
+        
+        .auth-warning-icon {
+            font-size: 2.8em;
+            margin-bottom: 16px;
+        }
+        
+        .auth-warning-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+        }
+        
+        .auth-warning-text {
+            font-size: 0.95em;
+            color: #78350f;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+        
+        .auth-warning-code {
+            background: #fff;
+            border: 1px dashed #f59e0b;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #92400e;
+            display: inline-block;
+            margin-top: 8px;
+        }
+        </style>
+        
+        <div class="auth-warning">
+            <div class="auth-warning-icon">🔐</div>
+            <div class="auth-warning-title">⚠️ 授权码验证 Required</div>
+            <div class="auth-warning-text">
+                行情视图为<span style="color:#dc2626; font-weight:600;">订阅专属功能</span><br>
+                请输入有效的 <span style="color:#f59e0b; font-weight:600;">Access Key</span> 解锁完整功能
             </div>
         </div>
         """, unsafe_allow_html=True)
