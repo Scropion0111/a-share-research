@@ -3,11 +3,11 @@
 EigenFlow | 量化研究订阅平台
 Subscription-based Quantitative Research Platform
 
-文件结构：
-├── app.py              # 主程序
-├── keys.json           # Access Keys 配置（生产环境请用 st.secrets）
-├── key_state.json      # Key 激活状态（自动生成）
-└── usage_log.jsonl     # 使用日志（自动生成）
+功能：
+├── 3 页面结构：信号清单（需Key）、行情视图、订阅支持
+├── Access Key 解锁机制
+├── TradingView 试用功能
+└── 水印 + 法务声明
 
 ================================================================================
 """
@@ -15,12 +15,10 @@ Subscription-based Quantitative Research Platform
 import streamlit as st
 import pandas as pd
 import os
+import uuid
 import json
 import hashlib
-import uuid
-import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 
 # ==================== 配置 | Configuration ====================
 
@@ -33,164 +31,22 @@ st.set_page_config(
 
 # 路径配置
 APP_DIR = os.path.dirname(__file__)
-KEYS_FILE = os.path.join(APP_DIR, 'keys.json')
-KEY_STATE_FILE = os.path.join(APP_DIR, 'key_state.json')
-USAGE_LOG_FILE = os.path.join(APP_DIR, 'usage_log.jsonl')
 
-# ==================== 风控配置 | Risk Control Config ====================
-# 【异常阈值配置位置】
-# - 同一 key 24h 内最大设备数：2
-# - 短时间窗口（秒）：300（5分钟内）
-# - 最大不同IP/UA/设备组合数：3
-DEVICE_LIMIT_PER_KEY = 2
-TIME_WINDOW_SECONDS = 300
-MAX_DEVICE_COMBINATIONS = 3
+# ==================== Access Keys（简单验证） ====================
+
+# 可用 Keys（和 keys.json 一致）
+VALID_ACCESS_KEYS = [
+    "EF-26Q1-A9F4KZ2M",
+    "EF-26Q1-B3H8LP5N",
+    "EF-26Q1-C7J2MR9R",
+]
+
+def validate_access_key(key: str) -> bool:
+    """验证 Access Key"""
+    return key.strip() in VALID_ACCESS_KEYS
 
 
 # ==================== 工具函数 | Utility Functions ====================
-
-def get_file_hash(text: str) -> str:
-    """生成文本的短 hash（用于日志脱敏）"""
-    return hashlib.md5(text.encode()).hexdigest()[:12]
-
-
-def get_ip():
-    """获取客户端 IP（可能为空）"""
-    # Streamlit 在某些部署环境下可获取
-    try:
-        return st.session_state.get('client_ip', 'unknown')
-    except:
-        return 'unknown'
-
-
-def get_user_agent():
-    """获取 User-Agent"""
-    try:
-        return st.context.headers.get('user-agent', 'unknown') if hasattr(st.context, 'headers') else 'unknown'
-    except:
-        return 'unknown'
-
-
-def load_keys():
-    """
-    加载 Access Keys
-    优先级：st.secrets > keys.json 文件
-    """
-    # 优先从 secrets 加载（生产环境推荐）
-    try:
-        if hasattr(st, 'secrets') and 'keys' in st.secrets:
-            return st.secrets['keys']
-    except:
-        pass
-    
-    # 从 keys.json 文件加载
-    if os.path.exists(KEYS_FILE):
-        try:
-            with open(KEYS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # 过滤注释键
-                return {k: v for k, v in data.items() if not k.startswith('_')}
-        except Exception as e:
-            st.error(f"加载 keys.json 失败: {e}")
-            return {}
-    
-    return {}
-
-
-def load_key_state():
-    """加载 Key 使用状态（首次激活时间等）"""
-    if os.path.exists(KEY_STATE_FILE):
-        try:
-            with open(KEY_STATE_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-
-def save_key_state(state: dict):
-    """保存 Key 使用状态"""
-    with open(KEY_STATE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
-
-def log_access(key: str, device_id: str, status: str, details: dict = None):
-    """
-    记录使用日志
-    【日志记录字段】
-    - key_mask: Key 的部分掩码（安全）
-    - timestamp: ISO 格式时间
-    - ip_hash: IP 的 hash（脱敏）
-    - ua_hash: User-Agent 的 hash（脱敏）
-    - device_id: 设备标识
-    - status: 状态（success/denied/expired/suspicious）
-    - details: 附加信息
-    """
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "key_mask": key[:8] + "****" if len(key) > 8 else "****",
-        "ip_hash": get_file_hash(get_ip()),
-        "ua_hash": get_file_hash(get_user_agent()),
-        "device_id": device_id,
-        "status": status,
-        "details": details or {}
-    }
-    
-    # 写入日志文件
-    try:
-        with open(USAGE_LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-    except Exception as e:
-        pass  # 日志写入失败不应影响主流程
-
-
-def check_device_anomaly(key: str, device_id: str) -> tuple[bool, str]:
-    """
-    检查设备异常
-    【异常检测规则】
-    1. 同一 key 24h 内出现 >2 个不同 device_id
-    2. 短时间内出现多个不同 IP/UA/device 组合
-    
-    返回: (是否异常, 警告信息)
-    """
-    if not os.path.exists(USAGE_LOG_FILE):
-        return False, ""
-    
-    try:
-        with open(USAGE_LOG_FILE, 'r', encoding='utf-8') as f:
-            logs = [json.loads(line) for line in f if line.strip()]
-    except:
-        return False, ""
-    
-    now = datetime.now()
-    recent_logs = [
-        log for log in logs
-        if log.get('key_mask') == (key[:8] + "****" if len(key) > 8 else key)
-        and (now - datetime.fromisoformat(log['timestamp'])).total_seconds() < 86400  # 24h
-    ]
-    
-    # 获取不同 device_id 数量
-    device_ids = set(log.get('device_id', '') for log in recent_logs)
-    if len(device_ids) > DEVICE_LIMIT_PER_KEY:
-        return True, f"检测到异常使用行为：同一密钥在24小时内使用于 {len(device_ids)} 个设备。"
-    
-    # 短时间多组合检测
-    short_window = [
-        log for log in logs
-        if log.get('key_mask') == (key[:8] + "****" if len(key) > 8 else key)
-        and (now - datetime.fromisoformat(log['timestamp'])).total_seconds() < TIME_WINDOW_SECONDS
-    ]
-    
-    combinations = set(
-        (log.get('ip_hash', ''), log.get('ua_hash', ''), log.get('device_id', ''))
-        for log in short_window
-    )
-    
-    if len(combinations) > MAX_DEVICE_COMBINATIONS:
-        return True, f"检测到异常使用行为：短时间内出现 {len(combinations)} 个不同访问组合。"
-    
-    return False, ""
-
 
 def format_stock_code(code):
     """补齐股票代码至6位"""
@@ -218,61 +74,10 @@ def load_signal_data():
 
 
 def get_device_id() -> str:
-    """获取或生成设备 ID（session 持久化）"""
+    """获取或生成设备 ID"""
     if 'device_id' not in st.session_state:
         st.session_state.device_id = str(uuid.uuid4())
     return st.session_state.device_id
-
-
-# ==================== Access Key 验证 | Access Key Validation ====================
-
-def validate_key(key: str) -> tuple[bool, str, int]:
-    """
-    验证 Access Key
-    【Key 首次激活与到期逻辑】
-    1. 检查 Key 格式是否有效
-    2. 检查是否首次使用：若是，记录 first_seen = 今天
-    3. 检查是否过期：first_seen + days > 今天
-    4. 检查是否在黑名单/异常
-    
-    返回: (是否有效, 状态信息, 剩余天数)
-    """
-    keys = load_keys()
-    key_state = load_key_state()
-    
-    # Key 格式验证
-    if key not in keys:
-        return False, "Key 无效", 0
-    
-    key_info = keys[key]
-    days_allowed = key_info.get('days', 30)
-    
-    now = datetime.now()
-    today = now.strftime('%Y-%m-%d')
-    
-    # 检查首次激活时间
-    if key not in key_state:
-        # 首次使用，记录激活时间
-        key_state[key] = {
-            'first_seen': today,
-            'name': key_info.get('name', '用户'),
-            'last_seen': today
-        }
-        save_key_state(key_state)
-    
-    first_seen = datetime.strptime(key_state[key]['first_seen'], '%Y-%m-%d')
-    expiry_date = first_seen + timedelta(days=days_allowed)
-    remaining_days = (expiry_date - now).days
-    
-    # 检查是否过期
-    if remaining_days < 0:
-        return False, f"Key 已过期（于 {key_state[key]['first_seen']} 激活，有效期 {days_allowed} 天）", remaining_days
-    
-    # 更新最后使用时间
-    key_state[key]['last_seen'] = today
-    save_key_state(key_state)
-    
-    return True, f"有效（剩余 {remaining_days} 天）", remaining_days
 
 
 # ==================== CSS 样式 | Custom CSS ====================
@@ -536,10 +341,10 @@ def render_disclaimer_mini():
     """, unsafe_allow_html=True)
 
 
-def render_access_input() -> tuple[bool, str, int]:
+def render_access_input() -> tuple[bool, str]:
     """
     渲染 Access Key 输入框
-    返回: (是否验证成功, Key掩码, 剩余天数)
+    返回: (是否验证成功, Key掩码)
     """
     st.markdown("""
     <div class="access-section">
@@ -561,40 +366,27 @@ def render_access_input() -> tuple[bool, str, int]:
     
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # 初始化
+    # 初始化 session state
     if 'access_verified' not in st.session_state:
         st.session_state.access_verified = False
         st.session_state.verified_key_mask = ""
-        st.session_state.verified_remaining_days = 0
-    
-    device_id = get_device_id()
     
     # 点击确认按钮时验证
     if confirm_btn and access_key:
-        is_valid, message, remaining = validate_key(access_key)
-        
-        if is_valid:
-            # 检查设备异常
-            is_suspicious, warning = check_device_anomaly(access_key, device_id)
-            
-            if is_suspicious:
-                log_access(access_key, device_id, "suspicious", {"reason": warning})
-                st.warning(f"⚠️ {warning} 如需多设备使用请联系作者。")
-            else:
-                st.session_state.access_verified = True
-                st.session_state.verified_key_mask = access_key[:8] + "****"
-                st.session_state.verified_remaining_days = remaining
-                log_access(access_key, device_id, "success", {"remaining_days": remaining})
-                st.rerun()
+        if validate_access_key(access_key):
+            st.session_state.access_verified = True
+            st.session_state.verified_key_mask = access_key[:8] + "****"
+            st.rerun()
         else:
-            log_access(access_key, device_id, "denied", {"reason": message})
-            st.error(f"❌ {message}")
+            st.session_state.access_verified = False
+            st.session_state.verified_key_mask = ""
+            st.error("❌ 无效的 Access Key")
     
-    return st.session_state.access_verified, st.session_state.verified_key_mask, st.session_state.verified_remaining_days
+    return st.session_state.access_verified, st.session_state.verified_key_mask
 
 
 def render_watermark(key_mask: str):
-    """渲染水印【授权码：EF-26Q1-****KZ2M｜仅限个人研究使用】"""
+    """渲染水印"""
     st.markdown(f"""
     <div class="watermark">
         授权码：{key_mask}｜仅限个人研究使用 · Licensed for personal research use only
@@ -648,6 +440,100 @@ def render_signal_other(rank: int, row, name: str):
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_tradingview_chart(symbol: str, height: int = 420):
+    """渲染 TradingView 图表"""
+    import streamlit.components.v1 as components
+    
+    tv_html = f"""
+    <div class="tv-container">
+        <div id="tradingview_widget" style="height: {height}px;"></div>
+    </div>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script type="text/javascript">
+    new TradingView.widget({{
+        "width": "100%",
+        "height": {height},
+        "symbol": "{symbol}",
+        "interval": "D",
+        "timezone": "Asia/Shanghai",
+        "theme": "light",
+        "style": "1",
+        "locale": "zh_CN",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "container_id": "tradingview_widget"
+    }});
+    </script>
+    """
+    st.markdown(tv_html, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="tv-disclaimer">
+        图表由 TradingView 提供。TradingView® 为 TradingView, Inc. 的注册商标。
+        本平台与 TradingView, Inc. 无合作、授权或隶属关系。
+        该图表仅作为第三方市场可视化参考。
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_trial_chart():
+    """渲染试用版图表（未验证用户）"""
+    import streamlit.components.v1 as components
+    
+    st.markdown("""
+    <div class="disclaimer-box">
+        <div class="disclaimer-title">🔓 TradingView 试用</div>
+        <div class="disclaimer-text">
+            输入任意股票代码，查看实时行情图表。
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    trial_symbol = st.text_input(
+        "输入股票代码",
+        placeholder="600519, 000001, 300624",
+        max_chars=6,
+        label_visibility="visible",
+        key="trial_symbol"
+    )
+    
+    if trial_symbol:
+        trial_symbol = trial_symbol.strip().zfill(6)
+        if len(trial_symbol) == 6 and trial_symbol.isdigit():
+            tv_symbol = get_tradingview_symbol(trial_symbol)
+            
+            tv_html = f"""
+            <div class="tv-container">
+                <div id="tradingview_trial" style="height: 400px;"></div>
+            </div>
+            <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+            <script type="text/javascript">
+            new TradingView.widget({{
+                "width": "100%",
+                "height": 400,
+                "symbol": "{tv_symbol}",
+                "interval": "D",
+                "timezone": "Asia/Shanghai",
+                "theme": "light",
+                "style": "1",
+                "locale": "zh_CN",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tradingview_trial"
+            }});
+            </script>
+            """
+            components.html(tv_html, height=480)
+            
+            st.markdown("""
+            <div class="tv-disclaimer">
+                TradingView® 为 TradingView, Inc. 注册商标
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def render_support_page():
@@ -714,41 +600,6 @@ def render_support_page():
         </div>
     </div>
     """)
-
-
-def render_tradingview_chart(symbol: str, height: int = 420):
-    """渲染 TradingView 图表"""
-    tv_html = f"""
-    <div class="tv-container">
-        <div id="tradingview_widget" style="height: {height}px;"></div>
-    </div>
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-    <script type="text/javascript">
-    new TradingView.widget({{
-        "width": "100%",
-        "height": {height},
-        "symbol": "{symbol}",
-        "interval": "D",
-        "timezone": "Asia/Shanghai",
-        "theme": "light",
-        "style": "1",
-        "locale": "zh_CN",
-        "toolbar_bg": "#f1f3f6",
-        "enable_publishing": false,
-        "allow_symbol_change": true,
-        "container_id": "tradingview_widget"
-    }});
-    </script>
-    """
-    st.markdown(tv_html, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="tv-disclaimer">
-        图表由 TradingView 提供。TradingView® 为 TradingView, Inc. 的注册商标。
-        本平台与 TradingView, Inc. 无合作、授权或隶属关系。
-        该图表仅作为第三方市场可视化参考。
-    </div>
-    """, unsafe_allow_html=True)
 
 
 # ==================== 页面 | Pages ====================
@@ -923,7 +774,7 @@ def main():
     
     with tab1:
         # 验证 Access Key
-        is_verified, key_mask, remaining_days = render_access_input()
+        is_verified, key_mask = render_access_input()
         
         if not is_verified:
             # 未验证 - 显示试用信息
@@ -932,16 +783,29 @@ def main():
             <div class="disclaimer-box">
                 <div class="disclaimer-title">🔓 试用功能</div>
                 <div class="disclaimer-text">
-                    您可切换至「行情视图」标签查看股票走势图。
+                    您可切换至「行情视图」标签查看股票走势图，
+                    或在下方输入任意股票代码试用 TradingView 图表。
                 </div>
             </div>
             """, unsafe_allow_html=True)
+            
+            # TradingView 试用
+            render_trial_chart()
+            
+            st.markdown("---")
+            st.markdown("""
+            <div class="disclaimer-box">
+                <div class="disclaimer-title">📧 获取 Access Key</div>
+                <div class="disclaimer-text">
+                    如需获取核心信号，请联系作者获取 Access Key。
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            render_watermark("试用模式")
             st.stop()
         
         # 已验证 - 显示信号清单
-        if remaining_days <= 7 and remaining_days > 0:
-            st.warning(f"⚠️ Key 即将到期（剩余 {remaining_days} 天），请及时续费")
-        
         page_signal_list(key_mask)
     
     with tab2:
