@@ -1,0 +1,21 @@
+{
+    "keys": {
+        "EF-26Q1-A9F4KZ2M": {
+            "name": "标准试用",
+            "days": 30
+        },
+        "EF-26Q1-B3H8LP5N": {
+            "name": "进阶试用",
+            "days": 30
+        },
+        "EF-26Q1-C7J2MR9R": {
+            "name": "高级试用",
+            "days": 30
+        }
+    },
+    "_comment": "生产环境请使用 st.secrets 管理 keys，格式如下：",
+    "_example_secrets": {
+        "EF-YOUR-KEY-HERE": {"name": "订阅用户", "days": 30}
+    }
+}
+
