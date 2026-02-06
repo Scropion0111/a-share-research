@@ -18,6 +18,7 @@ import os
 import uuid
 import json
 import hashlib
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # ==================== 配置 | Configuration ====================
@@ -444,7 +445,6 @@ def render_signal_other(rank: int, row, name: str):
 
 def render_tradingview_chart(symbol: str, height: int = 420):
     """渲染 TradingView 图表"""
-    import streamlit.components.v1 as components
     
     tv_html = f"""
     <div class="tv-container">
@@ -481,7 +481,6 @@ def render_tradingview_chart(symbol: str, height: int = 420):
 
 def render_trial_chart():
     """渲染试用版图表（未验证用户）"""
-    import streamlit.components.v1 as components
     
     st.markdown("""
     <div class="disclaimer-box">
@@ -777,30 +776,77 @@ def main():
         is_verified, key_mask = render_access_input()
         
         if not is_verified:
-            # 未验证 - 显示试用信息
-            st.info("💡 请输入有效的 Access Key 解锁核心信号")
+            # 未验证 - 显示醒目引导
             st.markdown("""
-            <div class="disclaimer-box">
-                <div class="disclaimer-title">🔓 试用功能</div>
-                <div class="disclaimer-text">
-                    您可切换至「行情视图」标签查看股票走势图，
-                    或在下方输入任意股票代码试用 TradingView 图表。
+            <style>
+            .lock-screen {
+                background: linear-gradient(135deg, #fefefe 0%, #f5f5f5 100%);
+                border: 2px solid #fbbf24;
+                border-radius: 16px;
+                padding: 32px;
+                margin: 24px 0;
+                text-align: center;
+            }
+            .lock-title {
+                font-size: 1.4em;
+                font-weight: 700;
+                color: #1a1a1a;
+                margin-bottom: 16px;
+            }
+            .lock-desc {
+                font-size: 0.95em;
+                color: #6b7280;
+                margin-bottom: 24px;
+                line-height: 1.6;
+            }
+            .lock-btn {
+                display: inline-block;
+                background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+                color: #1a1a1a;
+                padding: 14px 32px;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 1em;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+            .lock-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+            }
+            .trial-info {
+                background: #f8f9fa;
+                border-radius: 12px;
+                padding: 20px;
+                margin: 24px 0;
+            }
+            </style>
+            
+            <div class="lock-screen">
+                <div class="lock-title">🔐 核心信号已锁定</div>
+                <div class="lock-desc">
+                    本页面展示 EigenFlow 量化研究核心信号<br>
+                    包括 Rank 1-10 精选股票与评分<br><br>
+                    <strong style="color:#f59e0b;">请切换至「☕ 支持订阅」页面获取 Access Key</strong>
                 </div>
+                <a href="#support" class="lock-btn">
+                    → 立即获取 Access Key
+                </a>
+            </div>
+            
+            <div class="trial-info">
+                <div style="font-weight:600; margin-bottom:12px; color:#374151;">
+                    🔓 您可先试用以下功能：
+                </div>
+                <ul style="text-align:left; margin:0; padding-left:20px; color:#6b7280;">
+                    <li>📈 切换至「行情视图」查看 TradingView 图表</li>
+                    <li>📊 输入股票代码试用实时行情</li>
+                </ul>
             </div>
             """, unsafe_allow_html=True)
             
             # TradingView 试用
             render_trial_chart()
-            
-            st.markdown("---")
-            st.markdown("""
-            <div class="disclaimer-box">
-                <div class="disclaimer-title">📧 获取 Access Key</div>
-                <div class="disclaimer-text">
-                    如需获取核心信号，请联系作者获取 Access Key。
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
             
             render_watermark("试用模式")
             st.stop()
